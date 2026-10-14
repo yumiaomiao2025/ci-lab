@@ -51,3 +51,11 @@ jobs:
       # 步骤 7：查看打包出来的 dist 目录内容（验证产物是否生成成功）
       - name: ✅ 检查构建产物
         run: ls -lh dist
+
+      # 第 7 步：【新增出口】把 dist 目录打包成 zip 上传到 GitHub 页面
+      - name: 📦 导出 dist 为 zip 压缩包
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-package  # 最终生成的 zip 包名字（即 frontend-dist-package.zip）
+          path: dist/                  # 告诉插件要把虚拟机里的哪个文件夹打包带走
+          retention-days: 7            # 这个 zip 包在 GitHub 服务器上保留 7 天（默认 90 天）
