@@ -1,0 +1,53 @@
+# 流水线名称（会显示在 GitHub 网页的 Actions 面板里）
+name: Frontend CI Pipeline
+
+# 1. 触发条件
+on:
+  push:
+    branches: [main]          # 当有代码 push 到 main 分支时自动触发
+  pull_request:
+    branches: [main]          # 当有人向 main 分支提 PR 时自动触发
+  workflow_dispatch:          # 开启手动触发开关（方便你在网页上随时点按钮测试）
+
+# 2. 定义任务列表
+jobs:
+  # 任务 ID（可自定义名称，这里叫 ci-check）
+  ci-check:
+    # 向 GitHub 申请一台最新版的 Ubuntu 虚拟机
+    runs-on: ubuntu-latest
+
+    # 3. 按顺序执行的步骤
+    steps:
+      # 步骤 1：把当前仓库的代码拉取到这台虚拟机里
+      - name: 📥 拉取仓库源码
+        uses: actions/checkout@v4
+
+      # 步骤 2：在这台虚拟机里安装 pnpm
+      # 注意：必须在 setup-node 之前执行，否则下一步开启 pnpm 缓存会找不到命令报错
+      - name: 📦 安装 pnpm 包管理器
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9 # 如果你本地用的是 pnpm 8 或 10，改成对应数字即可
+
+      # 步骤 3：安装 Node.js 并开启依赖缓存
+      - name: 🟢 配置 Node.js 20 与缓存
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm' # 自动根据 pnpm-lock.yaml 缓存依赖，下次跑只需几秒钟
+
+      # 步骤 4：严格按照 pnpm-lock.yaml 安装依赖
+      - name: 🔧 安装项目依赖
+        run: pnpm install --frozen-lockfile
+
+      # 步骤 5：如果有 lint 脚本可取消下方注释；没有则先跳过
+      # - name: 🔍 代码规范检查
+      #   run: pnpm lint
+
+      # 步骤 6：执行生产环境打包验证
+      - name: 🏗️ 执行打包构建 (Build)
+        run: pnpm build
+
+      # 步骤 7：查看打包出来的 dist 目录内容（验证产物是否生成成功）
+      - name: ✅ 检查构建产物
+        run: ls -lh dist
