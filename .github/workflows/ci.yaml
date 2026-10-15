@@ -41,8 +41,8 @@ jobs:
           port: 22                              # SSH 默认端口是 22
 
           # 👇 二选一：如果你在第三步存的是密码，用 password；如果存的是私钥，用 key（把另一行删掉或注释掉）
-          password: ${{ secrets.SERVER_PASS }}
-          # key: ${{ secrets.SERVER_SSH_KEY }}
+          # password: ${{ secrets.SERVER_PASS }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
 
           # 传输配置（下面这 3 行非常关键！）
           source: "dist/*"                      # 要上传虚拟机里的哪个目录
