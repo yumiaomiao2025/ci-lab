@@ -3,6 +3,9 @@ name: Frontend CI/CD Pipeline
 on:
   push:
     branches: [main]
+  # 👇 【改动 1】加上这一段：当有人向 main 分支发起合并请求 (PR) 时，也唤醒流水线进行代码体检！
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -27,25 +30,22 @@ jobs:
       - name: 🔧 安装项目依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 🏗️ 执行打包构建 (Build)
+      - name: 🏗️ 执行打包构建 (CI 体检核心)
         run: pnpm build
 
-      # ================= 第 2 关新增：自动部署到个人服务器 =================
-      - name: 🚀 部署 dist 到个人云服务器
-        # 只有推送到 main 分支或手动触发时才部署（防止别人提 PR 时把测试代码发上服务器）
-        if: github.ref == 'refs/heads/main'
+      # 👇 【改动 2】注意看这里的 if 条件！
+      # 意思是：如果是提 PR 触发的体检，跑完上面的 build 就到此为止（跳过部署）；
+      # 只有真正 push 合并进 main 分支（或手动触发）时，才把 dist 传到你的个人服务器！
+      - name: 🚀 部署 dist 到个人云服务器 (CD)
+        if: github.event_name != 'pull_request'
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SERVER_HOST }}      # 从金库读取服务器 IP
-          username: ${{ secrets.SERVER_USER }}  # 从金库读取用户名
-          port: 22                              # SSH 默认端口是 22
-
-          # 👇 二选一：如果你在第三步存的是密码，用 password；如果存的是私钥，用 key（把另一行删掉或注释掉）
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: 22
           # password: ${{ secrets.SERVER_PASS }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-
-          # 传输配置（下面这 3 行非常关键！）
-          source: "dist/*"                      # 要上传虚拟机里的哪个目录
-          target: "/var/www/my-frontend/dist"   # 上传到个人服务器的哪个目录
-          strip_components: 1                   # 【必加防坑参数】剥离外层的 dist 文件夹壳子！
-          rm: true                              # 上传前先清空服务器上的旧 dist 目录，防止旧哈希文件堆积
+          source: "dist/*"
+          target: "/var/www/my-frontend/dist"
+          strip_components: 1
+          rm: true
