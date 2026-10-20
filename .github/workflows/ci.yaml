@@ -3,15 +3,14 @@ name: Frontend CI/CD Pipeline
 on:
   push:
     branches: [main]
-  # 👇 【改动 1】加上这一段：当有人向 main 分支发起合并请求 (PR) 时，也唤醒流水线进行代码体检！
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  # 📦 第 1 间屋子：只管 CI 检查和打包（无需审批，全自动跑）
+  ci-build:
     runs-on: ubuntu-latest
-
     steps:
       - name: 📥 拉取仓库源码
         uses: actions/checkout@v4
@@ -30,21 +29,39 @@ jobs:
       - name: 🔧 安装项目依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 🏗️ 执行打包构建 (CI 体检核心)
+      - name: 🏗️ 执行打包构建
         run: pnpm build
 
-      # 👇 【改动 2】注意看这里的 if 条件！
-      # 意思是：如果是提 PR 触发的体检，跑完上面的 build 就到此为止（跳过部署）；
-      # 只有真正 push 合并进 main 分支（或手动触发）时，才把 dist 传到你的个人服务器！
-      - name: 🚀 部署 dist 到个人云服务器 (CD)
-        if: github.event_name != 'pull_request'
+      # 把打包好的 dist 放进快递柜，贴上单号 build-dist
+      - name: 📦 存入 GitHub 快递柜
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-dist
+          path: dist/
+
+  # 🚀 第 2 间屋子：只管把 dist 发往服务器（受 production 门禁保护！）
+  cd-deploy:
+    needs: ci-build                        # 必须等第 1 间屋子跑成功了才轮到它
+    if: github.event_name != 'pull_request' # 提 PR 时直接跳过这间屋子
+    runs-on: ubuntu-latest
+    environment: production                # 👈 【就加这一行！】进屋前必须经过 production 门禁室审批！
+
+    steps:
+      # 从快递柜取出刚才打好包的 dist
+      - name: 📬 从快递柜取出 dist
+        uses: actions/download-artifact@v4
+        with:
+          name: build-dist
+          path: ./dist
+
+      # 原封不动发往你的个人服务器
+      - name: 🚀 部署 dist 到个人云服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           port: 22
-          # password: ${{ secrets.SERVER_PASS }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASS }}
           source: "dist/*"
           target: "/var/www/my-frontend/dist"
           strip_components: 1
