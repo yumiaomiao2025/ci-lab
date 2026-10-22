@@ -1,14 +1,14 @@
-name: Frontend CI/CD Pipeline
+name: Frontend CI/CD Pipeline (Docker Registry)
 
 on:
   push:
-    branches: [ "main" ] # 只有合并到 main 分支时才触发自动 CD 部署
+    branches: [ "main" ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1. 把代码拉到 GitHub 云端
+      # 1. 拉取前端源码
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -18,38 +18,38 @@ jobs:
         with:
           version: 8
 
-      # 3. 安装依赖并打包（单独作为一个 step 用 run 执行）
+      # 3. 安装依赖并打包出 dist 文件夹
       - name: Install dependencies & Build
         run: |
           pnpm install
-          pnpm build   # 打包出 dist 文件夹
-          
-      # 3. 把 dist、Dockerfile、nginx.conf 一起 SCP 传到服务器
-      - name: Copy files to Server via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "dist,Dockerfile,nginx.conf"  # 惊不惊喜？把这三个文件一次性全传过去！
-          target: "/var/www/my-frontend"
-          strip_components: 0 # 因为我们希望在服务器 /var/www/my-frontend 下完整保留这些目录/文件
+          pnpm build
 
-      # 4. 远程 SSH 登录服务器，自动执行 Docker 升级三连招！
-      - name: Deploy Docker Container via SSH
+      # 4. 【核心升级】在 GitHub 云端直接构建 Docker 镜像，并推送到腾讯云 TCR
+      - name: Build and Push Docker Image to TCR
+        run: |
+          docker login ccr.ccs.tencentyun.com -u ${{ secrets.TCR_USERNAME }} -p ${{ secrets.TCR_PASSWORD }}
+          docker build \
+            -t ccr.ccs.tencentyun.com/yuqiu-docker/my-frontend:latest \
+            -t ccr.ccs.tencentyun.com/yuqiu-docker/my-frontend:${{ github.sha }} .
+          docker push --all-tags ccr.ccs.tencentyun.com/yuqiu-docker/my-frontend
+
+      # 5. 【极致轻量】SSH 通知服务器：直接从腾讯云内网拉取最新镜像并重启容器！
+      - name: Pull Image and Run Container on Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /var/www/my-frontend
+            # 确保服务器已登录 TCR（防止服务器重启后登录态过期）
+            docker login ccr.ccs.tencentyun.com -u ${{ secrets.TCR_USERNAME }} -p ${{ secrets.TCR_PASSWORD }}
             
-            # 用刚刚传上来的 Dockerfile 和 dist 在服务器本地造新镜像
-            docker build -t my-frontend:latest .
+            # 1. 从腾讯云仓库拉取最新镜像（只拉发生变化的 dist 图层，极快！）
+            docker pull ccr.ccs.tencentyun.com/yuqiu-docker/my-frontend:latest
             
-            # 杀掉旧容器（|| true 的意思是：如果第一次还没起过这个容器，别让报错中断流水线）
+            # 2. 销毁旧容器，用最新镜像启动新容器
             docker rm -f my-web || true
+            docker run -d --name my-web -p 80:80 ccr.ccs.tencentyun.com/yuqiu-docker/my-frontend:latest
             
-            # 用新镜像启动容器，接管 80 端口
-            docker run -d --name my-web -p 80:80 my-frontend:latest
+            # 3. 自动清理被替换下来的无名 <none> 旧图层，保持服务器硬盘干净
+            docker image prune -f

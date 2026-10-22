@@ -1,4 +1,4 @@
 <template>
-  welcome to ci/cd world
-  docker/test
+  <div>welcome to ci/cd world</div>
+  <div>Hello Docker TCR!</div>
 </template>
