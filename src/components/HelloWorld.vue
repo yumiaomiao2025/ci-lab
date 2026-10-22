@@ -1,4 +1,4 @@
 <template>
   welcome to ci/cd world
-  protect/pr
+  docker/test
 </template>

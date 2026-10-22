@@ -1,0 +1,52 @@
+name: Frontend CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ] # 只有合并到 main 分支时才触发自动 CD 部署
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 把代码拉到 GitHub 云端
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. 安装 pnpm 并打包前端
+      - name: Install pnpm & Build
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+        run: |
+          pnpm install
+          pnpm build   # 打包出 dist 文件夹
+
+      # 3. 把 dist、Dockerfile、nginx.conf 一起 SCP 传到服务器
+      - name: Copy files to Server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "dist,Dockerfile,nginx.conf"  # 惊不惊喜？把这三个文件一次性全传过去！
+          target: "/var/www/my-frontend"
+          strip_components: 0 # 因为我们希望在服务器 /var/www/my-frontend 下完整保留这些目录/文件
+
+      # 4. 远程 SSH 登录服务器，自动执行 Docker 升级三连招！
+      - name: Deploy Docker Container via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /var/www/my-frontend
+            
+            # 用刚刚传上来的 Dockerfile 和 dist 在服务器本地造新镜像
+            docker build -t my-frontend:latest .
+            
+            # 杀掉旧容器（|| true 的意思是：如果第一次还没起过这个容器，别让报错中断流水线）
+            docker rm -f my-web || true
+            
+            # 用新镜像启动容器，接管 80 端口
+            docker run -d --name my-web -p 80:80 my-frontend:latest
