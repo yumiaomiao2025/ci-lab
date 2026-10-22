@@ -12,15 +12,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. 安装 pnpm 并打包前端
-      - name: Install pnpm & Build
+      # 2. 安装 pnpm
+      - name: Install pnpm
         uses: pnpm/action-setup@v2
         with:
           version: 8
+
+      # 3. 安装依赖并打包（单独作为一个 step 用 run 执行）
+      - name: Install dependencies & Build
         run: |
           pnpm install
           pnpm build   # 打包出 dist 文件夹
-
+          
       # 3. 把 dist、Dockerfile、nginx.conf 一起 SCP 传到服务器
       - name: Copy files to Server via SCP
         uses: appleboy/scp-action@v0.1.7
